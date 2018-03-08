@@ -49,38 +49,41 @@ requirejs(['./WorldWindShim',
         textAttributes.color = WorldWind.Color.MEDIUM_GRAY;
 
         hyperlinkCredit = new WorldWind.ScreenText(
-            new WorldWind.Offset(WorldWind.OFFSET_FRACTION, 1, WorldWind.OFFSET_FRACTION, 0.05), "NASA Worldind (https://worldwind.arc.nasa.gov)");
+            new WorldWind.Offset(WorldWind.OFFSET_FRACTION, 1, WorldWind.OFFSET_FRACTION, 0.05), "NASA WorldWind (https://worldwind.arc.nasa.gov)");
         textAttributes = new WorldWind.TextAttributes(textAttributes);
         textAttributes.offset = new WorldWind.Offset(WorldWind.OFFSET_FRACTION, 1, WorldWind.OFFSET_FRACTION, 0);
-        textAttributes.enableOutline=false;
+        textAttributes.enableOutline = false;
         hyperlinkCredit.attributes = textAttributes;
-        hyperlinkCredit.userProperties.url="https://worldwind.arc.nasa.gov";
-        hyperlinkCredit.pickDelegate
+        hyperlinkCredit.userProperties.url = "https://worldwind.arc.nasa.gov";
+        hyperlinkCredit.pickDelegate = hyperlinkCredit.userProperties;
         textLayer.addRenderable(hyperlinkCredit);
 
         wwd.addLayer(textLayer);
 
         var layerManager = new LayerManager(wwd);
 
-        var handlePick = (function (o) {
-            var pickPoint = wwd.canvasCoordinates(o.clientX, o.clientY);
+        var eventHandler = {
+            onGestureEvent: function (e) {
+                if (e.type !== "pointerdown") {
+                    return false;
+                }
+                var pickPoint = wwd.canvasCoordinates(e.clientX, e.clientY);
 
-            var pickList = wwd.pick(pickPoint);
-            if (pickList.objects.length > 0) {
-                for (var p = 0; p < pickList.objects.length; p++) {
-                    var pickedObject = pickList.objects[p];
-                    if (!pickedObject.isTerrain) {
-                        if (pickedObject.userObject instanceof WorldWind.ScreenText) {
-                            console.log(pickedObject.userObject.text);
+                var pickList = wwd.pick(pickPoint);
+                if (pickList.objects.length > 0) {
+                    for (var p = 0; p < pickList.objects.length; p++) {
+                        var pickedObject = pickList.objects[p];
+                        if (!pickedObject.isTerrain) {
+                            if (pickedObject.userObject.url) {
+                                window.open(pickedObject.userObject.url, "_blank");
+                                return true;
+                            }
                         }
                     }
                 }
+                return false;
             }
-        }).bind(this);
+        };
 
-        // Listen for mouse moves and highlight text that the cursor rolls over.
-        wwd.addEventListener("mousemove", handlePick);
-
-        // Listen for taps on mobile devices and highlight text that the user taps.
-        var tapRecognizer = new WorldWind.TapRecognizer(wwd, handlePick);
+        wwd.worldWindowController.addGestureListener(eventHandler);
     });
