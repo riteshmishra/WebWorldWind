@@ -46,11 +46,21 @@ define([
         var ScreenCreditController = function () {
             Layer.call(this, "ScreenCreditController");
 
-            // Internal. Intentionally not documented.
+            // @markpet @emxsys: Image credits use a pool mechanism to avoid constant allocation and deallocation of
+            // ScreenImage. Instances are acquired from the pool when an image credit is needed or created if the pool
+            // is empty (see addImageCredit). Instances are released to the pool when they're no longer in use (see clear).
+            // I used this type of pooling mechanism extensively in Android. It's more complicated than letting the
+            // garbage collector do the work, but Android performance is outstanding.
             this.imageCredits = [];
+            this.imageCreditPool = [];
 
-            // Internal. Intentionally not documented.
+            // @markpet @emxsys: String credits reuse a single array of instances. The controller keeps track of how
+            // many are in use and creates new ones as needed (see addStringCredit). The use count is reset when the
+            // instances are no longer in use (see clear). Offhand this sounded simpler to me, but I think the
+            // implementation ends up more complex than pooling. Additionally, I think this pattern will be difficult to
+            // apply to other cases, whereas pooling is a general and portable concept.
             this.textCredits = [];
+            this.textCreditCount = 0;
 
             // Internal. Intentionally not documented.
             this.margin = 5;
@@ -68,8 +78,13 @@ define([
          * Clears all credits from this controller.
          */
         ScreenCreditController.prototype.clear = function () {
-            this.imageCredits = [];
-            this.textCredits = [];
+            // Release image credits back into the pool.
+            var instance;
+            while ((instance = this.imageCredits.pop())) {
+                this.imageCreditPool.push(instance);
+            }
+
+            this.textCreditCount = 0;
         };
 
         /**
@@ -90,10 +105,16 @@ define([
                 }
             }
 
-            var screenOffset = new Offset(WorldWind.OFFSET_PIXELS, 0, WorldWind.OFFSET_PIXELS, 0);
-            var credit = new ScreenImage(screenOffset, imageUrl);
+            var credit = this.imageCreditPool.pop(); // attempt to use an image credit from the pool
+            if (!credit) { // create an image credit when the pool is empty
+                var screenOffset = new Offset(WorldWind.OFFSET_PIXELS, 0, WorldWind.OFFSET_PIXELS, 0);
+                credit = new ScreenImage(screenOffset, imageUrl);
+                credit.imageOffset = new Offset(WorldWind.OFFSET_FRACTION, 1, WorldWind.OFFSET_FRACTION, 0.5);
+            }
 
-            credit.imageOffset = new Offset(WorldWind.OFFSET_FRACTION, 1, WorldWind.OFFSET_FRACTION, 0.5);
+            if (credit.imageSource !== imageUrl) {
+                credit.imageSource = imageUrl; // suppress forced retrieval of image source that hasn't changed
+            }
 
             this.imageCredits.push(credit);
         };
@@ -116,20 +137,26 @@ define([
             }
 
             // Verify if text credit is not already in controller, if it is, don't add it.
-            for (var i = 0, len = this.textCredits.length; i < len; i++) {
+            for (var i = 0; i < this.textCreditCount; i++) {
                 if (this.textCredits[i].text === stringCredit) {
                     return;
                 }
             }
 
-            var screenOffset = new Offset(WorldWind.OFFSET_PIXELS, 0, WorldWind.OFFSET_PIXELS, 0);
-            var credit = new ScreenText(screenOffset, stringCredit);
+            var len = this.textCredits.length, credit;
+            if (len > this.textCreditCount) { // use an existing credit if the array has one
+                credit = this.textCredits[this.textCreditCount];
+            } else { // append a new credit to the end of the array
+                var screenOffset = new Offset(WorldWind.OFFSET_PIXELS, 0, WorldWind.OFFSET_PIXELS, 0);
+                credit = new ScreenText(screenOffset, stringCredit);
+                credit.attributes.enableOutline = false;
+                credit.attributes.offset = new Offset(WorldWind.OFFSET_FRACTION, 1, WorldWind.OFFSET_FRACTION, 0.5);
+                this.textCredits.push(credit);
+            }
 
-            credit.attributes.color = color;
-            credit.attributes.enableOutline = false;
-            credit.attributes.offset = new Offset(WorldWind.OFFSET_FRACTION, 1, WorldWind.OFFSET_FRACTION, 0.5);
-
-            this.textCredits.push(credit);
+            credit.text = stringCredit;
+            credit.attributes.color.copy(color);
+            this.textCreditCount++;
         };
 
         // Internal use only. Intentionally not documented.
@@ -138,14 +165,14 @@ define([
                 i,
                 len;
 
-            for (i = 0, len = this.imageCredits.length; i < len; i++) {
+            for (i = 0, len = this.imageCredits.length; i < len; i++) { // at this point, the imageCredits array has no knowledge of the pool
                 this.imageCredits[i].screenOffset.x = dc.viewport.width - (this.margin);
                 this.imageCredits[i].screenOffset.y = creditOrdinal * this.creditSpacing;
                 this.imageCredits[i].render(dc);
                 creditOrdinal++;
             }
 
-            for (i = 0, len = this.textCredits.length; i < len; i++) {
+            for (i = 0; i < this.textCreditCount; i++) { // we can't iterate over the textCredits array without knowing which ones are active
                 this.textCredits[i].screenOffset.x = dc.viewport.width - (this.margin);
                 this.textCredits[i].screenOffset.y = creditOrdinal * this.creditSpacing;
                 this.textCredits[i].render(dc);
