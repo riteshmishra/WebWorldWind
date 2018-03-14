@@ -20,14 +20,11 @@ requirejs(['../examples/WorldWindShim'],
         WorldWind.Logger.setLoggingLevel(WorldWind.Logger.LEVEL_WARNING);
 
         var wwd = new WorldWind.WorldWindow("canvasOne");
+        wwd.globe.tessellator.detailControl = 20.0;
         wwd.addLayer(new WorldWind.AtmosphereLayer());
         wwd.addLayer(new WorldWind.StarFieldLayer());
 
-        var imageLayer = new WorldWind.BMNGLandsatLayer();
-        imageLayer.detailControl = 1.0;
-        wwd.addLayer(imageLayer);
-
-        var tessellator = wwd.globe.tessellator;
-        tessellator.detailControl = 20.0;
-        wwd.addLayer(new WorldWind.ShowTessellationLayer());
+        var bingLayer = new WorldWind.BingAerialLayer();
+        bingLayer.detailControl = 1.0;
+        wwd.addLayer(bingLayer);
     });
